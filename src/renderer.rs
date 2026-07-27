@@ -5,6 +5,10 @@ use winit::window::Window;
 use glyphon::*;
 
 
+
+use crate::screen::Screen;
+
+
 pub struct Renderer {
     window: Arc<Window>,
     instance: wgpu::Instance,
@@ -22,6 +26,8 @@ pub struct Renderer {
     text_renderer: TextRenderer,
 
     buffer: Buffer,
+
+    screen: Screen,
 }
 
 impl Renderer {
@@ -100,9 +106,16 @@ impl Renderer {
             Some(size.height as f32),
         );
 
+        let mut screen = Screen::new();
+
+        screen.push_line("Welcome to Terminologyyy");
+        screen.push_line(" ");
+        screen.push_line("This is Rust Terminal");
+
+
         buffer.set_text(
             &mut font_system,
-            "Hello Terminal!",
+            &screen.lines.join("\n"),
             Attrs::new(),
             Shaping::Advanced,
         );
@@ -121,6 +134,7 @@ impl Renderer {
             atlas,
             text_renderer,
             buffer,
+            screen,
         }
     }
 
@@ -194,6 +208,18 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
         
         println!("Renderer resized to: {}x{}", width, height);
+    }
+
+    pub fn input_char(&mut self, ch: char) {
+        self.screen.push_char(ch);
+
+
+        self.buffer.set_text(
+            &mut self.font_system,
+            &self.screen.lines.join("\n"),
+            Attrs::new(),
+            Shaping::Advanced,
+        );
     }
 }
 

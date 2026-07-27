@@ -1,13 +1,15 @@
 
 // callling renderer module
 mod renderer;
+mod screen;
 
 
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{ElementState, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
+    keyboard::{Key, NamedKey},
     window::{Window, WindowAttributes},
 };
 
@@ -49,6 +51,25 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => {
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.resize(size.width, size.height);
+                }
+            }
+
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        match &event.logical_key {
+                            Key::Character(text) => {
+                                for ch in text.chars() {
+                                    renderer.input_char(ch);
+                                }
+                            }
+
+                            Key::Named(NamedKey::Space) => {
+                                renderer.input_char(' ');
+                            }
+                            _ => {}
+                        }
+                    }
                 }
             }
 
