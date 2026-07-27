@@ -71,6 +71,10 @@ impl ApplicationHandler for App {
                             Key::Named(NamedKey::Backspace) => {
                                 renderer.backspace();
                             }
+
+                            Key::Named(NamedKey::Enter) => {
+                                renderer.new_line();
+                            }
                             _ => {}
                         }
                     }

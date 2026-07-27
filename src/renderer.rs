@@ -232,5 +232,16 @@ impl Renderer {
             Shaping::Advanced,
         );
     }
+
+    pub fn new_line(&mut self) {
+        self.screen.new_line();
+
+        self.buffer.set_text(
+            &mut self.font_system,
+            &self.screen.lines.join("\n"),
+            Attrs::new(),
+            Shaping::Advanced,
+        );
+    }
 }
 

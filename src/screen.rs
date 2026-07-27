@@ -30,4 +30,8 @@ impl Screen {
             line.pop();
         }
     }
+
+    pub fn new_line(&mut self) {
+        self.lines.push(String::new());
+    }
 }
