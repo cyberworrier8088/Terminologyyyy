@@ -67,6 +67,10 @@ impl ApplicationHandler for App {
                             Key::Named(NamedKey::Space) => {
                                 renderer.input_char(' ');
                             }
+
+                            Key::Named(NamedKey::Backspace) => {
+                                renderer.backspace();
+                            }
                             _ => {}
                         }
                     }

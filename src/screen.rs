@@ -24,4 +24,10 @@ impl Screen {
 
         self.lines.last_mut().unwrap().push(ch);
     }
+
+    pub fn backspace(&mut self) {
+        if let Some(line) = self.lines.last_mut() {
+            line.pop();
+        }
+    }
 }

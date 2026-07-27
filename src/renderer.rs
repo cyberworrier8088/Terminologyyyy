@@ -221,5 +221,16 @@ impl Renderer {
             Shaping::Advanced,
         );
     }
+
+    pub fn backspace(&mut self) {
+        self.screen.backspace();
+
+        self.buffer.set_text(
+            &mut self.font_system,
+            &self.screen.lines.join("\n"),
+            Attrs::new(),
+            Shaping::Advanced,
+        );
+    }
 }
 
