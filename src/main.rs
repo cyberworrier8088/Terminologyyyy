@@ -2,6 +2,7 @@
 // callling renderer module
 mod renderer;
 mod screen;
+mod pty;
 
 
 use std::sync::Arc;
