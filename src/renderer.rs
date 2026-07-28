@@ -9,6 +9,13 @@ use glyphon::*;
 use crate::screen::Screen;
 use crate::pty::Pty;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AnsiState {
+    Ground,
+    Escape,
+    Csi,
+    Osc,
+}
 
 pub struct Renderer {
     window: Arc<Window>,
@@ -31,6 +38,10 @@ pub struct Renderer {
     screen: Screen,
 
     pty: Pty,
+
+    ansi_state: AnsiState,
+
+    csi_buffer: String,
 }
 
 impl Renderer {
@@ -141,7 +152,19 @@ impl Renderer {
             buffer,
             screen,
             pty,
+            ansi_state: AnsiState::Ground,
+            csi_buffer: String::new(),
         }
+    }
+
+
+    fn refresh_buffer(&mut self) {
+        self.buffer.set_text(
+            &mut self.font_system,
+            &self.screen.lines.join("\n"),
+            Attrs::new(),
+            Shaping::Advanced,
+        );
     }
 
     pub fn render(&mut self) {
@@ -149,14 +172,65 @@ impl Renderer {
         let output = self.pty.read_output();
 
         if !output.is_empty() {
-            self.screen.push_line(output);
+            println!("{:?}", output);
 
-            self.buffer.set_text(
-                &mut self.font_system,
-                &self.screen.lines.join("\n"),
-                Attrs::new(),
-                Shaping::Advanced,
-            );
+            for ch in output.chars() {
+                match self.ansi_state {
+                    AnsiState::Ground => match ch {
+                        '\x1b' => {
+                            self.ansi_state = AnsiState::Escape;
+                            self.csi_buffer.clear();
+                        }
+                        '\n' => {
+                            self.screen.new_line();
+                        }
+                        '\r' => {
+                            self.screen.carriage_return();
+                        }
+                        '\x08' => {
+                            self.screen.backspace();
+                        }
+                        _ => {
+                            if !ch.is_control() {
+                                self.screen.push_char(ch);
+                            }
+                        }
+                    },
+                    AnsiState::Escape => match ch {
+                        '[' => {
+                            self.ansi_state = AnsiState::Csi;
+                            self.csi_buffer.clear();
+                        }
+                        ']' => {
+                            self.ansi_state = AnsiState::Osc;
+                        }
+                        _ => {
+                            self.ansi_state = AnsiState::Ground;
+                        }
+                    },
+                    AnsiState::Csi => {
+                        if ('\x40'..='~').contains(&ch) {
+                            if ch == 'n' && self.csi_buffer == "6" {
+                                self.pty.write("\x1b[1;1R");
+                            }
+                            self.csi_buffer.clear();
+                            self.ansi_state = AnsiState::Ground;
+                        } else if ch == '\x1b' {
+                            self.ansi_state = AnsiState::Escape;
+                            self.csi_buffer.clear();
+                        } else {
+                            self.csi_buffer.push(ch);
+                        }
+                    }
+                    AnsiState::Osc => {
+                        if ch == '\x07' || ch == '\x1b' {
+                            self.ansi_state = AnsiState::Ground;
+                        }
+                    }
+                }
+            }
+
+            self.refresh_buffer();
         }
 
         let frame = self.surface.get_current_texture().unwrap();
@@ -231,43 +305,15 @@ impl Renderer {
     }
 
     pub fn input_char(&mut self, ch: char) {
-        self.screen.push_char(ch);
-
         self.pty.write(&ch.to_string());
-
-
-        self.buffer.set_text(
-            &mut self.font_system,
-            &self.screen.lines.join("\n"),
-            Attrs::new(),
-            Shaping::Advanced,
-        );
     }
 
     pub fn backspace(&mut self) {
-        self.screen.backspace();
-
         self.pty.write("\x08");
-
-        self.buffer.set_text(
-            &mut self.font_system,
-            &self.screen.lines.join("\n"),
-            Attrs::new(),
-            Shaping::Advanced,
-        );
     }
 
     pub fn new_line(&mut self) {
-        self.screen.new_line();
-
-        self.pty.write("\r\n");
-
-        self.buffer.set_text(
-            &mut self.font_system,
-            &self.screen.lines.join("\n"),
-            Attrs::new(),
-            Shaping::Advanced,
-        );
+        self.pty.write("\r");
     }
 }
 
