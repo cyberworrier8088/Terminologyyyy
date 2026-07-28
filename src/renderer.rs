@@ -194,10 +194,10 @@ impl Renderer {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -233,6 +233,8 @@ impl Renderer {
     pub fn input_char(&mut self, ch: char) {
         self.screen.push_char(ch);
 
+        self.pty.write(&ch.to_string());
+
 
         self.buffer.set_text(
             &mut self.font_system,
@@ -245,6 +247,8 @@ impl Renderer {
     pub fn backspace(&mut self) {
         self.screen.backspace();
 
+        self.pty.write("\x08");
+
         self.buffer.set_text(
             &mut self.font_system,
             &self.screen.lines.join("\n"),
@@ -255,6 +259,8 @@ impl Renderer {
 
     pub fn new_line(&mut self) {
         self.screen.new_line();
+
+        self.pty.write("\r\n");
 
         self.buffer.set_text(
             &mut self.font_system,
