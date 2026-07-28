@@ -7,6 +7,7 @@ use glyphon::*;
 
 
 use crate::screen::Screen;
+use crate::pty::Pty;
 
 
 pub struct Renderer {
@@ -28,6 +29,8 @@ pub struct Renderer {
     buffer: Buffer,
 
     screen: Screen,
+
+    pty: Pty,
 }
 
 impl Renderer {
@@ -108,6 +111,8 @@ impl Renderer {
 
         let mut screen = Screen::new();
 
+        let pty = Pty::new();
+
         screen.push_line("Welcome to Terminologyyy");
         screen.push_line(" ");
         screen.push_line("This is Rust Terminal");
@@ -135,10 +140,25 @@ impl Renderer {
             text_renderer,
             buffer,
             screen,
+            pty,
         }
     }
 
     pub fn render(&mut self) {
+
+        let output = self.pty.read_output();
+
+        if !output.is_empty() {
+            self.screen.push_line(output);
+
+            self.buffer.set_text(
+                &mut self.font_system,
+                &self.screen.lines.join("\n"),
+                Attrs::new(),
+                Shaping::Advanced,
+            );
+        }
+
         let frame = self.surface.get_current_texture().unwrap();
 
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());

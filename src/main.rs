@@ -43,15 +43,14 @@ impl ApplicationHandler for App {
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.render();
                 }
-
-                if let Some(window) = self.window.as_ref() {
-                    window.request_redraw();
-                }
             }
 
             WindowEvent::Resized(size) => {
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.resize(size.width, size.height);
+                }
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
                 }
             }
 
@@ -64,25 +63,31 @@ impl ApplicationHandler for App {
                                     renderer.input_char(ch);
                                 }
                             }
-
                             Key::Named(NamedKey::Space) => {
                                 renderer.input_char(' ');
                             }
-
                             Key::Named(NamedKey::Backspace) => {
                                 renderer.backspace();
                             }
-
                             Key::Named(NamedKey::Enter) => {
                                 renderer.new_line();
                             }
                             _ => {}
                         }
                     }
+                    if let Some(window) = self.window.as_ref() {
+                        window.request_redraw();
+                    }
                 }
             }
 
             _ => (),
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(window) = self.window.as_ref() {
+            window.request_redraw();
         }
     }
 }

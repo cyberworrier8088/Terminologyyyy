@@ -14,14 +14,21 @@
 
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 
+use std::io::Read;
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
+use std::io::Write;
 
 pub struct Pty {
     pub pair: portable_pty::PtyPair,
+    rx: Receiver<String>,
+    writer: Box<dyn Write + Send>,
 }
 
 
 impl Pty {
     pub fn new() -> Self {
+        
         let pty_system = NativePtySystem::default();
 
         let pair = pty_system.openpty(PtySize {
@@ -32,6 +39,8 @@ impl Pty {
         }   
         ).unwrap();
 
+        let writer = pair.master.take_writer().unwrap();
+
         #[cfg(target_os = "windows")]
         let cmd = CommandBuilder::new("powershell.exe");
 
@@ -40,10 +49,44 @@ impl Pty {
 
         pair.slave.spawn_command(cmd).unwrap();
 
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let (tx, rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            let mut buffer = [0u8; 4096];
+            while let Ok(n) = reader.read(&mut buffer) {
+                if n == 0 {
+                    break;
+                }
+                let s = String::from_utf8_lossy(&buffer[..n]).to_string();
+                if tx.send(s).is_err() {
+                    break;
+                }
+            }
+        });
+
         Self {
             pair,
+            rx,
+            writer
         }
 
+    }
+
+    pub fn read_output(&mut self) -> String {
+        let mut output = String::new();
+        while let Ok(chunk) = self.rx.try_recv() {
+            output.push_str(&chunk);
+        }
+        output
+    }
+
+    pub fn write(&mut self, text: &str) {
+        use std::io::Write;
+
+        self.writer.write_all(text.as_bytes()).unwrap();
+
+        self.writer.flush().unwrap();
     }
     
 }
