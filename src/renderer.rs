@@ -1,10 +1,7 @@
 use std::sync::Arc;
 use winit::window::Window;
 
-// this for font
 use glyphon::*;
-
-
 
 use crate::screen::Screen;
 use crate::pty::Pty;
@@ -46,12 +43,10 @@ pub struct Renderer {
 
 impl Renderer {
     pub async fn new(window: Arc<Window>, instance: wgpu::Instance) -> Self {
-        println!("Initializingggg Renderer");
+        println!("Initializing Renderer...");
 
-        println!("init surface...");
         let surface = instance.create_surface(window.clone()).unwrap();
 
-        println!("Finding GPU...");
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 compatible_surface: Some(&surface),
@@ -61,35 +56,22 @@ impl Renderer {
             .await
             .unwrap();
 
-        println!("GPU Found! Adapter: {:?}", adapter.get_info());
+        println!("GPU Found: {:?}", adapter.get_info().name);
 
-        println!("Creating Device...");
         let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default(), None).await.unwrap();
 
-        println!("Device Ready!");
         let size = window.inner_size();
-        println!("Window size: {:?}", size);
-
-        println!("Getting default config...");
         let config = surface.get_default_config(&adapter, size.width, size.height).unwrap();
-
-        println!("Configuring surface...");
         surface.configure(&device, &config);
 
-        println!("Renderer  successcreatedfully!");
-
         let mut font_system = FontSystem::new();
-
         let swash_cache = SwashCache::new();
-
         let cache = Cache::new(&device);
-
         let mut viewport = Viewport::new(&device, &cache);
-
 
         viewport.update(
             &queue,
-            Resolution{
+            Resolution {
                 width: size.width,
                 height: size.height,
             },
@@ -120,14 +102,8 @@ impl Renderer {
             Some(size.height as f32),
         );
 
-        let mut screen = Screen::new();
-
+        let screen = Screen::new();
         let pty = Pty::new();
-
-        screen.push_line("Welcome to Terminologyyy");
-        screen.push_line(" ");
-        screen.push_line("This is Rust Terminal");
-
 
         buffer.set_text(
             &mut font_system,
@@ -157,23 +133,60 @@ impl Renderer {
         }
     }
 
+    fn execute_csi(&mut self, command: char) {
+        let clean_buffer = self.csi_buffer.trim_start_matches('?');
+        let params: Vec<u32> = clean_buffer
+            .split(';')
+            .filter_map(|s| s.parse::<u32>().ok())
+            .collect();
+
+        let first_param = *params.first().unwrap_or(&1);
+
+        match command {
+            'A' => self.screen.cursor_up(first_param as usize),
+            'B' => self.screen.cursor_down(first_param as usize),
+            'C' => self.screen.cursor_right(first_param as usize),
+            'D' => self.screen.cursor_left(first_param as usize),
+            'K' => {
+                let mode = *params.first().unwrap_or(&0);
+                self.screen.erase_in_line(mode);
+            }
+            'J' => {
+                let mode = *params.first().unwrap_or(&0);
+                if mode == 2 || mode == 3 {
+                    self.screen.clear_screen();
+                }
+            }
+            'H' | 'f' => {
+                let row = (*params.first().unwrap_or(&1) as usize).saturating_sub(1);
+                let col = (*params.get(1).unwrap_or(&1) as usize).saturating_sub(1);
+                self.screen.cursor_y = row;
+                self.screen.cursor_x = col;
+                self.screen.ensure_cursor_valid();
+            }
+            'n' => {
+                if self.csi_buffer == "6" {
+                    self.pty.write("\x1b[1;1R");
+                }
+            }
+            _ => {}
+        }
+    }
 
     fn refresh_buffer(&mut self) {
+        let text = self.screen.lines.join("\n");
         self.buffer.set_text(
             &mut self.font_system,
-            &self.screen.lines.join("\n"),
+            &text,
             Attrs::new(),
             Shaping::Advanced,
         );
     }
 
     pub fn render(&mut self) {
-
         let output = self.pty.read_output();
 
         if !output.is_empty() {
-            println!("{:?}", output);
-
             for ch in output.chars() {
                 match self.ansi_state {
                     AnsiState::Ground => match ch {
@@ -188,7 +201,14 @@ impl Renderer {
                             self.screen.carriage_return();
                         }
                         '\x08' => {
-                            self.screen.backspace();
+                            self.screen.cursor_left(1);
+                        }
+                        '\x07' => {}
+                        '\t' => {
+                            let next_tab = (self.screen.cursor_x / 8 + 1) * 8;
+                            while self.screen.cursor_x < next_tab {
+                                self.screen.push_char(' ');
+                            }
                         }
                         _ => {
                             if !ch.is_control() {
@@ -210,9 +230,7 @@ impl Renderer {
                     },
                     AnsiState::Csi => {
                         if ('\x40'..='~').contains(&ch) {
-                            if ch == 'n' && self.csi_buffer == "6" {
-                                self.pty.write("\x1b[1;1R");
-                            }
+                            self.execute_csi(ch);
                             self.csi_buffer.clear();
                             self.ansi_state = AnsiState::Ground;
                         } else if ch == '\x1b' {
@@ -233,7 +251,10 @@ impl Renderer {
             self.refresh_buffer();
         }
 
-        let frame = self.surface.get_current_texture().unwrap();
+        let frame = match self.surface.get_current_texture() {
+            Ok(frame) => frame,
+            Err(_) => return,
+        };
 
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -252,7 +273,15 @@ impl Renderer {
             custom_glyphs: &[],
         };
         
-        self.text_renderer.prepare(&self.device,&self.queue,&mut self.font_system,&mut self.atlas,&self.viewport,[text_area],&mut self.swash_cache,).unwrap();
+        self.text_renderer.prepare(
+            &self.device,
+            &self.queue,
+            &mut self.font_system,
+            &mut self.atlas,
+            &self.viewport,
+            [text_area],
+            &mut self.swash_cache,
+        ).unwrap();
         
         let mut encoder = self.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor {
@@ -268,10 +297,10 @@ impl Renderer {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
-                            a: 0.0,
+                            r: 0.05,
+                            g: 0.05,
+                            b: 0.08,
+                            a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -289,9 +318,9 @@ impl Renderer {
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
-
         frame.present();
     }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 {
             return;
@@ -301,19 +330,19 @@ impl Renderer {
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
         
-        println!("Renderer resized to: {}x{}", width, height);
+        self.viewport.update(
+            &self.queue,
+            Resolution { width, height },
+        );
+
+        self.buffer.set_size(
+            &mut self.font_system,
+            Some(width as f32),
+            Some(height as f32),
+        );
     }
 
-    pub fn input_char(&mut self, ch: char) {
-        self.pty.write(&ch.to_string());
-    }
-
-    pub fn backspace(&mut self) {
-        self.pty.write("\x08");
-    }
-
-    pub fn new_line(&mut self) {
-        self.pty.write("\r");
+    pub fn write_pty(&mut self, text: &str) {
+        self.pty.write(text);
     }
 }
-

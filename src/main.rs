@@ -1,9 +1,6 @@
-
-// callling renderer module
 mod renderer;
 mod screen;
 mod pty;
-
 
 use std::sync::Arc;
 use winit::{
@@ -21,8 +18,12 @@ struct App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = Arc::new(event_loop.create_window(WindowAttributes::default().with_title("Terminologyyyya")).unwrap());
-        
+        let window = Arc::new(
+            event_loop
+                .create_window(WindowAttributes::default().with_title("Terminologyyyy Terminal"))
+                .unwrap(),
+        );
+
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
@@ -57,22 +58,62 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed {
                     if let Some(renderer) = self.renderer.as_mut() {
+                        let mut handled = false;
+
                         match &event.logical_key {
-                            Key::Character(text) => {
-                                for ch in text.chars() {
-                                    renderer.input_char(ch);
-                                }
-                            }
-                            Key::Named(NamedKey::Space) => {
-                                renderer.input_char(' ');
-                            }
                             Key::Named(NamedKey::Backspace) => {
-                                renderer.backspace();
+                                renderer.write_pty("\x08");
+                                handled = true;
                             }
                             Key::Named(NamedKey::Enter) => {
-                                renderer.new_line();
+                                renderer.write_pty("\r");
+                                handled = true;
+                            }
+                            Key::Named(NamedKey::Tab) => {
+                                renderer.write_pty("\t");
+                                handled = true;
+                            }
+                            Key::Named(NamedKey::Escape) => {
+                                renderer.write_pty("\x1b");
+                                handled = true;
+                            }
+                            Key::Named(NamedKey::ArrowUp) => {
+                                renderer.write_pty("\x1b[A");
+                                handled = true;
+                            }
+                            Key::Named(NamedKey::ArrowDown) => {
+                                renderer.write_pty("\x1b[B");
+                                handled = true;
+                            }
+                            Key::Named(NamedKey::ArrowRight) => {
+                                renderer.write_pty("\x1b[C");
+                                handled = true;
+                            }
+                            Key::Named(NamedKey::ArrowLeft) => {
+                                renderer.write_pty("\x1b[D");
+                                handled = true;
+                            }
+                            Key::Named(NamedKey::Home) => {
+                                renderer.write_pty("\x1b[H");
+                                handled = true;
+                            }
+                            Key::Named(NamedKey::End) => {
+                                renderer.write_pty("\x1b[F");
+                                handled = true;
+                            }
+                            Key::Named(NamedKey::Space) => {
+                                renderer.write_pty(" ");
+                                handled = true;
                             }
                             _ => {}
+                        }
+
+                        if !handled {
+                            if let Some(text) = &event.text {
+                                renderer.write_pty(text);
+                            } else if let Key::Character(ch_str) = &event.logical_key {
+                                renderer.write_pty(ch_str);
+                            }
                         }
                     }
                     if let Some(window) = self.window.as_ref() {
@@ -102,4 +143,3 @@ fn main() {
 
     event_loop.run_app(&mut app).unwrap();
 }
-
