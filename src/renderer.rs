@@ -14,6 +14,11 @@ enum AnsiState {
     Osc,
 }
 
+#[derive(Clone, Copy)]
+struct TextStyle {
+    fg: Color,
+}
+
 pub struct Renderer {
     window: Arc<Window>,
     instance: wgpu::Instance,
@@ -39,6 +44,8 @@ pub struct Renderer {
     ansi_state: AnsiState,
 
     csi_buffer: String,
+
+    style: TextStyle,
 }
 
 impl Renderer {
@@ -58,7 +65,7 @@ impl Renderer {
 
         println!("GPU Found: {:?}", adapter.get_info().name);
 
-        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default(), None).await.unwrap();
+        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor::default()).await.unwrap();
 
         let size = window.inner_size();
         let config = surface.get_default_config(&adapter, size.width, size.height).unwrap();
@@ -107,8 +114,8 @@ impl Renderer {
 
         buffer.set_text(
             &mut font_system,
-            &screen.lines.join("\n"),
-            Attrs::new(),
+            &screen.to_text(),
+            &Attrs::new(),
             Shaping::Advanced,
         );
 
@@ -130,6 +137,9 @@ impl Renderer {
             pty,
             ansi_state: AnsiState::Ground,
             csi_buffer: String::new(),
+            style: TextStyle {
+                fg: Color::rgb(255, 255, 255),
+            },
         }
     }
 
@@ -150,6 +160,27 @@ impl Renderer {
             'K' => {
                 let mode = *params.first().unwrap_or(&0);
                 self.screen.erase_in_line(mode);
+            }
+            'm' => {
+                for code in &params {
+                    match *code {
+                        0 => {
+                            self.style.fg = Color::rgb(255, 255, 255)
+                        }
+
+                        30 => self.style.fg = Color::rgb(0, 0, 0),
+                        31 => self.style.fg = Color::rgb(255, 0, 0),
+                        32 => self.style.fg = Color::rgb(0, 255, 0),
+                        33 => self.style.fg = Color::rgb(255, 255, 0),
+                        34 => self.style.fg = Color::rgb(0, 0, 255),
+                        35 => self.style.fg = Color::rgb(255, 0, 255),
+                        36 => self.style.fg = Color::rgb(0, 255, 255),
+                        37 => self.style.fg = Color::rgb(255, 255, 255),
+
+
+                        _ => {}
+                    }
+                }
             }
             'J' => {
                 let mode = *params.first().unwrap_or(&0);
@@ -173,14 +204,40 @@ impl Renderer {
         }
     }
 
+
+    fn attrs_from_color(color: Color) -> Attrs<'static> {
+        Attrs::new().color(color)
+    }
+
     fn refresh_buffer(&mut self) {
-        let text = self.screen.lines.join("\n");
-        self.buffer.set_text(
+        let mut text = String::new();
+
+        let default_attrs = Attrs::new();
+
+        let mut spans: Vec<(String, Attrs)> = Vec::new();
+
+        for (y, line) in self.screen.lines.iter().enumerate() {
+            for cell in line {
+                text.push(cell.ch);
+
+                spans.push((
+                    cell.ch.to_string(),
+                    Self::attrs_from_color(cell.fg),
+                ));
+            }
+
+            if y + 1 != self.screen.lines.len() {
+                text.push('\n');
+            }
+        }
+
+        self.buffer.set_rich_text(
             &mut self.font_system,
-            &text,
-            Attrs::new(),
+            spans.iter().map(|(text, attrs)| (text.as_str(), attrs.clone())),
+            &default_attrs,
             Shaping::Advanced,
-        );
+            None,
+        )
     }
 
     pub fn render(&mut self) {
@@ -191,6 +248,7 @@ impl Renderer {
                 match self.ansi_state {
                     AnsiState::Ground => match ch {
                         '\x1b' => {
+                  
                             self.ansi_state = AnsiState::Escape;
                             self.csi_buffer.clear();
                         }
@@ -207,12 +265,12 @@ impl Renderer {
                         '\t' => {
                             let next_tab = (self.screen.cursor_x / 8 + 1) * 8;
                             while self.screen.cursor_x < next_tab {
-                                self.screen.push_char(' ');
+                                self.screen.push_char_with_fg(' ', self.style.fg);
                             }
                         }
                         _ => {
                             if !ch.is_control() {
-                                self.screen.push_char(ch);
+                                self.screen.push_char_with_fg(ch, self.style.fg);
                             }
                         }
                     },
@@ -269,7 +327,7 @@ impl Renderer {
                 right: 60000,
                 bottom: 60000,
             },
-            default_color: Color::rgb(255, 255, 255),
+            default_color: Color::rgb(255, 0, 0),
             custom_glyphs: &[],
         };
         

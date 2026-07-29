@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 winit = "0.30"
-wgpu = "23"
-glyphon = "0.7"
+wgpu = "25"
+glyphon = "0.9"
 pollster = "0.4"
 portable-pty = "0.9"
