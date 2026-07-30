@@ -13,6 +13,9 @@ pub struct Screen {
     pub lines: Vec<Vec<Cell>>,
     pub cursor_x: usize,
     pub cursor_y: usize,
+    pub rows: usize,
+    pub cols: usize,
+    pub scrollback: usize,
 }
 
 impl Screen {
@@ -21,6 +24,9 @@ impl Screen {
             lines: vec![Vec::new()],
             cursor_x: 0,
             cursor_y: 0,
+            rows: 30,
+            cols: 120,
+            scrollback: 5000,
         }
     }
 
@@ -48,6 +54,10 @@ impl Screen {
             line.push(cell);
         }
         self.cursor_x += 1;
+
+        if self.cursor_x >= self.cols {
+            self.new_line();
+        }
     }
 
     pub fn push_char(&mut self, ch: char) {
@@ -58,17 +68,18 @@ impl Screen {
         self.cursor_x = 0;
     }
 
-    const MAX_ROWS: usize = 30;
-
     pub fn new_line(&mut self) {
         self.cursor_y += 1;
         self.cursor_x = 0;
         
 
-        if self.cursor_y >= Self::MAX_ROWS {
+        if self.lines.len() >= self.scrollback {
             self.lines.remove(0);
+        }
+
+        if self.cursor_y >= self.rows {
             self.lines.push(Vec::new());
-            self.cursor_y = Self::MAX_ROWS - 1;
+            self.cursor_y = self.rows - 1;
         } else {
             self.ensure_cursor_valid();
         }

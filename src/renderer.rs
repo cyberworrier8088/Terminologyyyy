@@ -398,6 +398,16 @@ impl Renderer {
             Some(width as f32),
             Some(height as f32),
         );
+
+
+        const LINE_HEIGHT: u32 = 24;
+
+        self.screen.rows = ((height / LINE_HEIGHT).max(1)) as usize;
+
+
+        const CHAR_WIDTH: u32 = 10;
+
+        self.screen.cols = ((width / CHAR_WIDTH).max(1)) as usize;
     }
 
     pub fn write_pty(&mut self, text: &str) {
