@@ -37,7 +37,7 @@ pub struct Renderer {
 
     buffer: Buffer,
 
-    screen: Screen,
+    pub screen: Screen,
 
     pty: Pty,
 
@@ -162,21 +162,30 @@ impl Renderer {
                 self.screen.erase_in_line(mode);
             }
             'm' => {
-                for code in &params {
-                    match *code {
-                        0 => {
-                            self.style.fg = Color::rgb(255, 255, 255)
-                        }
+                let codes = if params.is_empty() { vec![0] } else { params };
+                for code in codes {
+                    match code {
+                        0 | 39 => self.style.fg = Color::rgb(255, 255, 255),
 
+                        // Basic FG (30-37)
                         30 => self.style.fg = Color::rgb(0, 0, 0),
-                        31 => self.style.fg = Color::rgb(255, 0, 0),
-                        32 => self.style.fg = Color::rgb(0, 255, 0),
-                        33 => self.style.fg = Color::rgb(255, 255, 0),
-                        34 => self.style.fg = Color::rgb(0, 0, 255),
-                        35 => self.style.fg = Color::rgb(255, 0, 255),
-                        36 => self.style.fg = Color::rgb(0, 255, 255),
-                        37 => self.style.fg = Color::rgb(255, 255, 255),
+                        31 => self.style.fg = Color::rgb(205, 49, 49),
+                        32 => self.style.fg = Color::rgb(13, 188, 121),
+                        33 => self.style.fg = Color::rgb(229, 229, 16),
+                        34 => self.style.fg = Color::rgb(36, 114, 200),
+                        35 => self.style.fg = Color::rgb(188, 63, 188),
+                        36 => self.style.fg = Color::rgb(17, 168, 205),
+                        37 => self.style.fg = Color::rgb(229, 229, 229),
 
+                        // Bright FG (90-97)
+                        90 => self.style.fg = Color::rgb(102, 102, 102),
+                        91 => self.style.fg = Color::rgb(241, 76, 76),
+                        92 => self.style.fg = Color::rgb(35, 209, 139),
+                        93 => self.style.fg = Color::rgb(245, 245, 67),
+                        94 => self.style.fg = Color::rgb(59, 142, 234),
+                        95 => self.style.fg = Color::rgb(214, 112, 214),
+                        96 => self.style.fg = Color::rgb(41, 184, 219),
+                        97 => self.style.fg = Color::rgb(255, 255, 255),
 
                         _ => {}
                     }
@@ -209,26 +218,53 @@ impl Renderer {
         Attrs::new().color(color)
     }
 
-    fn refresh_buffer(&mut self) {
-        let mut text = String::new();
-
+    pub fn refresh_buffer(&mut self) {
         let default_attrs = Attrs::new();
-
         let mut spans: Vec<(String, Attrs)> = Vec::new();
 
-        for (y, line) in self.screen.lines.iter().enumerate() {
-            for cell in line {
-                text.push(cell.ch);
+        let len = self.screen.lines.len();
+        let end = len.saturating_sub(self.screen.viewport_offset);
+        let start = end.saturating_sub(self.screen.rows);
 
-                spans.push((
-                    cell.ch.to_string(),
-                    Self::attrs_from_color(cell.fg),
-                ));
+        let visible_lines = if start < end && end <= len {
+            &self.screen.lines[start..end]
+        } else {
+            &self.screen.lines[..]
+        };
+
+        for (y, line) in visible_lines.iter().enumerate() {
+            if line.is_empty() {
+                spans.push((" ".to_string(), default_attrs.clone()));
+            } else {
+                let mut current_color: Option<Color> = None;
+                let mut current_text = String::new();
+
+                for cell in line {
+                    if Some(cell.fg) != current_color {
+                        if !current_text.is_empty() {
+                            spans.push((current_text, Self::attrs_from_color(current_color.unwrap())));
+                            current_text = String::new();
+                        }
+                        current_color = Some(cell.fg);
+                    }
+                    current_text.push(cell.ch);
+                }
+
+                if !current_text.is_empty() {
+                    spans.push((
+                        current_text,
+                        Self::attrs_from_color(current_color.unwrap_or(Color::rgb(255, 255, 255))),
+                    ));
+                }
             }
 
-            if y + 1 != self.screen.lines.len() {
-                text.push('\n');
+            if y + 1 != visible_lines.len() {
+                spans.push(("\n".to_string(), default_attrs.clone()));
             }
+        }
+
+        if spans.is_empty() {
+            spans.push((" ".to_string(), default_attrs.clone()));
         }
 
         self.buffer.set_rich_text(
@@ -237,13 +273,16 @@ impl Renderer {
             &default_attrs,
             Shaping::Advanced,
             None,
-        )
+        );
     }
 
     pub fn render(&mut self) {
         let output = self.pty.read_output();
 
         if !output.is_empty() {
+
+            self.screen.viewport_offset = 0;
+
             for ch in output.chars() {
                 match self.ansi_state {
                     AnsiState::Ground => match ch {
@@ -327,7 +366,7 @@ impl Renderer {
                 right: 60000,
                 bottom: 60000,
             },
-            default_color: Color::rgb(255, 0, 0),
+            default_color: Color::rgb(255, 255, 255),
             custom_glyphs: &[],
         };
         

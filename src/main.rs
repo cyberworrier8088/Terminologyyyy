@@ -5,7 +5,7 @@ mod pty;
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, WindowEvent},
+    event::{ElementState, MouseScrollDelta,WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{Key, NamedKey},
     window::{Window, WindowAttributes},
@@ -55,9 +55,36 @@ impl ApplicationHandler for App {
                 }
             }
 
+            WindowEvent::MouseWheel { delta, .. } => {
+                if let Some(renderer) = self.renderer.as_mut() {
+                    match delta {
+                        MouseScrollDelta::LineDelta(_, y) => {
+                            if y > 0.0 {
+                                renderer.screen.viewport_offset = renderer.screen.viewport_offset.saturating_add(3);
+                            } else if y < 0.0 {
+                                renderer.screen.viewport_offset = renderer.screen.viewport_offset.saturating_sub(3);
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    renderer.screen.clamp_viewport();
+                    renderer.refresh_buffer();
+                }
+
+                if let Some(window) = self.window.as_ref() {
+                    window.request_redraw();
+                }
+            }
+
+
+
             WindowEvent::KeyboardInput { event, .. } => {
+                
                 if event.state == ElementState::Pressed {
+                    
                     if let Some(renderer) = self.renderer.as_mut() {
+                        
                         let mut handled = false;
 
                         match &event.logical_key {

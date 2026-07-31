@@ -16,6 +16,7 @@ pub struct Screen {
     pub rows: usize,
     pub cols: usize,
     pub scrollback: usize,
+    pub viewport_offset: usize,
 }
 
 impl Screen {
@@ -27,6 +28,7 @@ impl Screen {
             rows: 30,
             cols: 120,
             scrollback: 5000,
+            viewport_offset: 0,
         }
     }
 
@@ -71,18 +73,13 @@ impl Screen {
     pub fn new_line(&mut self) {
         self.cursor_y += 1;
         self.cursor_x = 0;
-        
 
         if self.lines.len() >= self.scrollback {
             self.lines.remove(0);
+            self.cursor_y = self.cursor_y.saturating_sub(1);
         }
 
-        if self.cursor_y >= self.rows {
-            self.lines.push(Vec::new());
-            self.cursor_y = self.rows - 1;
-        } else {
-            self.ensure_cursor_valid();
-        }
+        self.ensure_cursor_valid();
     }
 
     pub fn cursor_left(&mut self, count: usize) {
@@ -144,16 +141,28 @@ impl Screen {
     pub fn to_text(&self) -> String {
         let mut out = String::new();
 
-        for (y, line) in self.lines.iter().enumerate() {
+        let end = self.lines.len().saturating_sub(self.viewport_offset);
+        let start = end.saturating_sub(self.rows);
+
+        for (y, line) in self.lines[start..end].iter().enumerate() {
             for cell in line {
                 out.push(cell.ch);
             }
 
-            if y + 1 != self.lines.len() {
+            if y + 1 != self.lines[start..end].len() {
                 out.push('\n');
             }
         }
 
         out
+    }
+
+
+    pub fn clamp_viewport(&mut self) {
+        let max_offset = self.lines.len().saturating_sub(self.rows);
+
+        if self.viewport_offset > max_offset {
+            self.viewport_offset = max_offset;
+        }
     }
 }
